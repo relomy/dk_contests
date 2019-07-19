@@ -1,0 +1,26 @@
+[[source]]
+name = "pypi"
+url = "https://pypi.org/simple"
+verify_ssl = true
+
+[[source]]
+url = "https://www.piwheels.org/simple"
+name = "piwheels"
+verify_ssl = true
+
+[dev-packages]
+pylint = "*"
+black = "*"
+rope = "*"
+
+[packages]
+requests = "*"
+pytz = "*"
+browsercookie = {hg = "https://bitbucket.org/richardpenman/browsercookie/"}
+pywin32 = {version = "*", sys_platform = "== 'win32'"}
+
+[requires]
+python_version = "3.7"
+
+[pipenv]
+allow_prereleases = true

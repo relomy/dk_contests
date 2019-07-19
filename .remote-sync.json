@@ -1,0 +1,22 @@
+{
+  "uploadOnSave": true,
+  "useAtomicWrites": false,
+  "deleteLocal": false,
+  "hostname": "192.168.1.109",
+  "port": "22",
+  "ignore": [
+    ".remote-sync.json",
+    ".git/**",
+    ".venv/**",
+    "*.sql",
+    "*.out",
+    "*.log",
+    "*.swp",
+    "*.csv"
+  ],
+  "username": "pi",
+  "keyfile": "C:\\Users\\Adam\\.ssh\\id_rsa",
+  "watch": [],
+  "transport": "scp",
+  "target": "/home/pi/Desktop/dk_contests"
+}
