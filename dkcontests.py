@@ -96,26 +96,27 @@ def parse_contests(contests, dt, entry_fee=25, query=None, exclude=None):
     contest_list = []
     largest_contest = None
 
-    # stats = {"date": defaultdict(int), "SE_DU": defaultdict(int)}
     stats = {}
     for c in contests:
         start_date = c.startDt.strftime("%Y-%m-%d")
-        if start_date in stats:
-            stats[start_date]["count"] += 1
-        else:
-            stats[start_date] = {}
-            stats[start_date]["count"] = 1
 
-        # track single-entry double ups
+        # initialize stats[start_date] if it doesn't exist
+        if start_date not in stats:
+            stats[start_date] = {"count": 0}
+
+        stats[start_date]["count"] += 1
+
+        # keep track of single-entry double-ups
         if c.maxEntryCount == 1 and c.isDoubleUp:
-            if "dubs" in stats[start_date]:
-                if c.entryFee in stats[start_date]["dubs"]:
-                    stats[start_date]["dubs"][c.entryFee] += 1
-                else:
-                    stats[start_date]["dubs"][c.entryFee] = 1
-            else:
-                stats[start_date]["dubs"] = {}
-                stats[start_date]["dubs"][c.entryFee] = 1
+            # initialize stats[start_date]["dubs"] if it doesn't exist
+            if "dubs" not in stats[start_date]:
+                stats[start_date]["dubs"] = {c.entryFee: 0}
+
+            # initialize stats[start_date]["dubs"][c.entryFee] if it doesn't exist
+            if c.entryFee not in stats[start_date]["dubs"]:
+                stats[start_date]["dubs"][c.entryFee] = 0
+
+            stats[start_date]["dubs"][c.entryFee] += 1
 
         if match_contest_criteria(c, dt, entry_fee, query, exclude):
             contest_list.append(c)
