@@ -91,43 +91,21 @@ class Contest:
         return f"{vars(self)}"
 
 
-def parse_contests(contests, dt, entry_fee=25, query=None, exclude=None):
+def get_largest_contest(contests, dt, entry_fee=25, query=None, exclude=None):
     print("contests size: {}".format(len(contests)))
     contest_list = []
-    largest_contest = None
 
-    stats = {}
     for c in contests:
-        start_date = c.startDt.strftime("%Y-%m-%d")
-
-        # initialize stats[start_date] if it doesn't exist
-        if start_date not in stats:
-            stats[start_date] = {"count": 0}
-
-        stats[start_date]["count"] += 1
-
-        # keep track of single-entry double-ups
-        if c.maxEntryCount == 1 and c.isDoubleUp:
-            # initialize stats[start_date]["dubs"] if it doesn't exist
-            if "dubs" not in stats[start_date]:
-                stats[start_date]["dubs"] = {c.entryFee: 0}
-
-            # initialize stats[start_date]["dubs"][c.entryFee] if it doesn't exist
-            if c.entryFee not in stats[start_date]["dubs"]:
-                stats[start_date]["dubs"][c.entryFee] = 0
-
-            stats[start_date]["dubs"][c.entryFee] += 1
-
         if match_contest_criteria(c, dt, entry_fee, query, exclude):
             contest_list.append(c)
 
     print("number of contests meeting requirements: {}".format(len(contest_list)))
 
-    sorted_list = sorted(contest_list, key=lambda x: x.entries, reverse=True)
-    if sorted_list:
-        largest_contest = sorted_list[0]
+    # sorted_list = sorted(contest_list, key=lambda x: x.entries, reverse=True)
+    if contest_list:
+        return max(contest_list, key=lambda x: x.entries)
 
-    return largest_contest, stats
+    return None
 
 
 def match_contest_criteria(contest, dt, entry_fee=25, query=None, exclude=None):
@@ -236,15 +214,43 @@ def valid_date(date_string):
         raise argparse.ArgumentTypeError(msg)
 
 
-def print_stats(stats):
+def get_stats(contests):
+    stats = {}
+    for c in contests:
+        start_date = c.startDt.strftime("%Y-%m-%d")
+
+        # initialize stats[start_date] if it doesn't exist
+        if start_date not in stats:
+            stats[start_date] = {"count": 0}
+
+        stats[start_date]["count"] += 1
+
+        # keep track of single-entry double-ups
+        if c.maxEntryCount == 1 and c.isDoubleUp:
+            # initialize stats[start_date]["dubs"] if it doesn't exist
+            if "dubs" not in stats[start_date]:
+                stats[start_date]["dubs"] = {c.entryFee: 0}
+
+            # initialize stats[start_date]["dubs"][c.entryFee] if it doesn't exist
+            if c.entryFee not in stats[start_date]["dubs"]:
+                stats[start_date]["dubs"][c.entryFee] = 0
+
+            stats[start_date]["dubs"][c.entryFee] += 1
+
+    return stats
+
+
+def print_stats(contests):
+    stats = get_stats(contests)
+
     if stats:
         print("Breakdown per date:")
         for date, values in sorted(stats.items()):
-            print(f"    {date} - {values['count']} total contests:")
+            print(f"{date} - {values['count']} total contests:")
 
             if "dubs" in values:
                 for entry_fee, count in sorted(values["dubs"].items()):
-                    print(f"        ${entry_fee}: {count} contest(s)")
+                    print(f"     ${entry_fee}: {count} contest(s)")
 
 
 def main():
@@ -296,10 +302,10 @@ def main():
     # create list of Contest objects
     contests = [Contest(c) for c in response_contests]
 
-    # parse contest and return single contest which matches arg criteria and stats
-    contest, stats = parse_contests(contests, args.date, args.entry, args.query, args.exclude)
+    print_stats(contests)
 
-    print_stats(stats)
+    # parse contest and return single contest which matches argument criteria
+    contest = get_largest_contest(contests, args.date, args.entry, args.query, args.exclude)
 
     # check if contest is empty
     if not contest:
