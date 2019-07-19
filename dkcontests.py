@@ -45,9 +45,27 @@ import requests
 from pytz import timezone
 
 
-class Contest(object):
+COOKIES = browsercookie.chrome()
+HEADERS = {
+    "Accept": "*/*",
+    "Accept-Encoding": "gzip, deflate, sdch",
+    "Accept-Language": "en-US,en;q=0.8",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    # 'Cookie': os.environ['DK_AUTH_COOKIES'],
+    "Host": "www.draftkings.com",
+    "Pragma": "no-cache",
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/48.0.2564.97 Safari/537.36"
+    ),
+    "X-Requested-With": "XMLHttpRequest",
+}
+
+
+class Contest:
     def __init__(self, contest):
-        self.contest = contest
         self.startDate = contest["sd"]
         self.name = contest["n"]
         self.id = contest["id"]
@@ -70,64 +88,65 @@ class Contest(object):
         return datetime.datetime.fromtimestamp(timestamp / 1000)
 
     def __str__(self):
-        print("name: {}".format(self.name))
-        print("dateTime: {}".format(self.startDate))
-        print("startDt: {}".format(self.startDt))
-        print("contest id: {}".format(self.id))
-        print("draft group: {}".format(self.draftGroup))
-        print("totalPrizes: {}".format(self.totalPrizes))
-        print("entries: {}".format(self.entries))
-        print("entryFee: {}".format(self.entryFee))
-        print("entryCount: {}".format(self.entryCount))
-        print("mec: {}".format(self.maxEntryCount))
-        print("")
-        return ""
+        return f"{vars(self)}"
 
 
-def get_largest_contest(contests, dt, entry_fee=25, query=None, exclude=None):
-    print("get_largest_contest(contests, {})".format(entry_fee))
-    print(type(contests))
+def parse_contests(contests, dt, entry_fee=25, query=None, exclude=None):
     print("contests size: {}".format(len(contests)))
-    ls = []
+    contest_list = []
+    largest_contest = None
+
+    # stats = {"date": defaultdict(int), "SE_DU": defaultdict(int)}
     stats = {}
-    stats["date"] = defaultdict(int)
-    stats["SE_DU"] = defaultdict(int)
-
     for c in contests:
-        stats["date"][c.startDt.strftime("%Y-%m-%d")] += 1
+        start_date = c.startDt.strftime("%Y-%m-%d")
+        if start_date in stats:
+            stats[start_date]["count"] += 1
+        else:
+            stats[start_date] = {}
+            stats[start_date]["count"] = 1
 
-        if c.startDt.date() == dt.date():  # check if the date is correct
-            if c.maxEntryCount == 1:  # single entry only
+        # track single-entry double ups
+        if c.maxEntryCount == 1 and c.isDoubleUp:
+            if "dubs" in stats[start_date]:
+                if c.entryFee in stats[start_date]["dubs"]:
+                    stats[start_date]["dubs"][c.entryFee] += 1
+                else:
+                    stats[start_date]["dubs"][c.entryFee] = 1
+            else:
+                stats[start_date]["dubs"] = {}
+                stats[start_date]["dubs"][c.entryFee] = 1
 
-                # keep track of single-entry double ups
-                if c.isDoubleUp:
-                    stats["SE_DU"][c.entryFee] += 1
+        if match_contest_criteria(c, dt, entry_fee, query, exclude):
+            contest_list.append(c)
 
-                if c.entryFee == entry_fee:  # match the entry fee
-                    # if exclude is in the name, skip it
-                    if exclude:
-                        if exclude in c.name:
-                            continue
+    print("number of contests meeting requirements: {}".format(len(contest_list)))
 
-                    # if query is in the name, add it to the list
-                    if query:
-                        if query in c.name:
-                            ls.append(c)
-                    else:
-                        ls.append(c)
-
-    print(stats)
-
-    print("number of contests meeting requirements: {}".format(len(ls)))
-    # sort contests by # of entries
-    sorted_list = sorted(ls, key=lambda x: x.entries, reverse=True)
-
-    # if there is a sorted list, return the first element
+    sorted_list = sorted(contest_list, key=lambda x: x.entries, reverse=True)
     if sorted_list:
-        print("sorted_list: {}".format(sorted_list[0]))
-        return sorted_list[0]
+        largest_contest = sorted_list[0]
 
-    return None
+    return largest_contest, stats
+
+
+def match_contest_criteria(contest, dt, entry_fee=25, query=None, exclude=None):
+    if (
+        contest.startDt.date() == dt.date()
+        and contest.maxEntryCount == 1
+        and contest.entryFee == entry_fee
+        and contest.isDoubleUp
+    ):
+        # if exclude is in the name, return false
+        if exclude and exclude in contest.name:
+            return False
+
+        # if query is not in the name, return false
+        if query and query not in contest.name:
+            return False
+
+        return True
+
+    return False
 
 
 def get_contests_by_entries(contests, entry_fee, limit):
@@ -140,11 +159,12 @@ def get_contests_by_entries(contests, entry_fee, limit):
 
 def print_cron_string(contest, sport):
     print(contest)
-    py_str = (
-        "cd /home/pi/Desktop/dk_salary_owner/ && /home/pi/.local/bin/pipenv run python"
-    )
-    dl_str = py_str + " download_DK_salary.py"
-    get_str = py_str + " get_DFS_results.py"
+    home_dir = "/home/pi/Desktop/dk_salary_owner/"
+    pipenv_path = "/home/pi/.local/bin/pipenv"
+
+    py_str = f"/bin/cd {home_dir} && {pipenv_path} run python"
+    dl_str = f"{py_str} download_DK_salary.py"
+    get_str = f"{py_str} get_DFS_results.py"
 
     # set interval and length depending on sport
     if sport == "NBA":
@@ -171,22 +191,18 @@ def print_cron_string(contest, sport):
     # if dates are the same, we don't add days or hours
     if contest.startDt.date() == end_dt.date():
         print("dates are the same")
-        hours = "{}-{}".format(contest.startDt.strftime("%H"), end_dt.strftime("%H"))
-        days = "{}".format(contest.startDt.strftime("%d"))
+        hours = f"{contest.startDt:%H}-{end_dt:%H}"
+        days = f"{contest.startDt:%d}"
     else:
         print("dates are not the same - that means end_dt extends into the next day")
         # don't double print 00s
         if end_dt.strftime("%H") == "00":
-            hours = "{},{}-23".format(
-                end_dt.strftime("%H"), contest.startDt.strftime("%H")
-            )
+            hours = f"{end_dt:%H},{contest.startDt:%H}-23"
         else:
-            hours = "00-{},{}-23".format(
-                end_dt.strftime("%H"), contest.startDt.strftime("%H")
-            )
-        days = "{}-{}".format(contest.startDt.strftime("%d"), end_dt.strftime("%d"))
+            hours = f"00-{end_dt:%H},{contest.startDt:%H}-23"
+        days = f"{contest.startDt:%d}-{end_dt:%d}"
 
-    cron_str = "{0} {1} {2} *".format(hours, days, end_dt.strftime("%m"))
+    cron_str = f"{hours} {days} {end_dt:%m} *"
 
     print(
         "{0} {1} {2} -s {3} -dg {4} >> /home/pi/Desktop/{3}_results.log 2>&1".format(
@@ -202,21 +218,32 @@ def print_cron_string(contest, sport):
 
 def valid_date(date_string):
     """Check date argument to determine if it is a valid
-    
+
     Arguments:
         date_string {string} -- date from argument
-    
+
     Raises:
-        argparse.ArgumentTypeError: 
-    
+        argparse.ArgumentTypeError:
+
     Returns:
-        datetime.datetime -- YYYY-MM-DD format
+        {datetime.datetime} -- YYYY-MM-DD format
     """
     try:
         return datetime.datetime.strptime(date_string, "%Y-%m-%d")
     except ValueError:
         msg = "Not a valid date: '{0}'.".format(date_string)
         raise argparse.ArgumentTypeError(msg)
+
+
+def print_stats(stats):
+    if stats:
+        print("Breakdown per date:")
+        for date, values in sorted(stats.items()):
+            print(f"    {date} - {values['count']} total contests:")
+
+            if "dubs" in values:
+                for entry_fee, count in sorted(values["dubs"].items()):
+                    print(f"        ${entry_fee}: {count} contest(s)")
 
 
 def main():
@@ -231,9 +258,7 @@ def main():
         help="Type of contest (NBA, NFL, GOLF, CFB, NHL, MLB, or TEN)",
     )
     parser.add_argument("-l", "--live", action="store_true", help="Get live contests")
-    parser.add_argument(
-        "-e", "--entry", type=int, default=25, help="Entry fee (25 for $25)"
-    )
+    parser.add_argument("-e", "--entry", type=int, default=25, help="Entry fee (25 for $25)")
     parser.add_argument("-q", "--query", help="Search contest name")
     parser.add_argument("-x", "--exclude", help="Exclude from search")
     parser.add_argument(
@@ -251,31 +276,12 @@ def main():
         live = "live"
 
     # set cookies based on Chrome session
-    COOKIES = browsercookie.chrome()
-    URL = "https://www.draftkings.com/lobby/get{0}contests?sport={1}".format(
-        live, args.sport
-    )
-    print(URL)
-    HEADERS = {
-        "Accept": "*/*",
-        "Accept-Encoding": "gzip, deflate, sdch",
-        "Accept-Language": "en-US,en;q=0.8",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        # 'Cookie': os.environ['DK_AUTH_COOKIES'],
-        "Host": "www.draftkings.com",
-        "Pragma": "no-cache",
-        "User-Agent": (
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_10_5) "
-            "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/48.0.2564.97 Safari/537.36"
-        ),
-        "X-Requested-With": "XMLHttpRequest",
-    }
 
-    response = requests.get(URL, headers=HEADERS, cookies=COOKIES).json()
+    url = "https://www.draftkings.com/lobby/get{0}contests?sport={1}".format(live, args.sport)
+    print(url)
+
+    response = requests.get(url, headers=HEADERS, cookies=COOKIES).json()
     response_contests = {}
-    contests = []
     if isinstance(response, list):
         print("response is a list")
         response_contests = response
@@ -287,23 +293,16 @@ def main():
         exit()
 
     # create list of Contest objects
-    for c in response_contests:
-        contests.append(Contest(c))
-    # TODO add switch to categorize types/dates of contests returned
-    # for example
-    # contests size: 562
-    # dates: 2018-07-13: 500
-    #        2018-07-14:  62
+    contests = [Contest(c) for c in response_contests]
 
-    contest = get_largest_contest(
-        contests, args.date, args.entry, args.query, args.exclude
-    )
+    # parse contest and return single contest which matches arg criteria and stats
+    contest, stats = parse_contests(contests, args.date, args.entry, args.query, args.exclude)
+
+    print_stats(stats)
 
     # check if contest is empty
     if not contest:
         exit("No contests found.")
-
-    print("contest type: {}".format(type(contest)))
 
     # change GOLF back to PGA
     if args.sport == "GOLF":
