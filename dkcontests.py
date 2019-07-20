@@ -76,7 +76,7 @@ class Contest:
         self.is_guaranteed = False
         self.is_double_up = False
 
-        self.startDt = self.get_dt_from_timestamp(self.start_date)
+        self.start_dt = self.get_dt_from_timestamp(self.start_date)
 
         if "IsDoubleUp" in self.attr:
             self.is_double_up = self.attr["IsDoubleUp"]
@@ -94,7 +94,7 @@ class Contest:
 
 def get_largest_contest(contests, dt, entry_fee=25, query=None, exclude=None):
     """Return largest contest from a list of Contests
-    
+
     Parameters
     ----------
     contests : list of Contests
@@ -107,7 +107,7 @@ def get_largest_contest(contests, dt, entry_fee=25, query=None, exclude=None):
         include string in contest name, by default None
     exclude : string, optional
         exclude string in contest name, by default None
-    
+
     Returns
     -------
     Contest
@@ -130,7 +130,7 @@ def get_largest_contest(contests, dt, entry_fee=25, query=None, exclude=None):
 
 def match_contest_criteria(contest, dt, entry_fee=25, query=None, exclude=None):
     """Use arguments to filter contest criteria.
-    
+
     Parameters
     ----------
     contest : Contest
@@ -143,7 +143,7 @@ def match_contest_criteria(contest, dt, entry_fee=25, query=None, exclude=None):
         include string in contest name, by default None
     exclude : string, optional
         exclude string in contest name, by default None
-    
+
     Returns
     -------
     boolean
@@ -151,7 +151,7 @@ def match_contest_criteria(contest, dt, entry_fee=25, query=None, exclude=None):
     """
     #
     if (
-        contest.startDt.date() == dt.date()
+        contest.start_dt.date() == dt.date()
         and contest.max_entry_count == 1
         and contest.entry_fee == entry_fee
         and contest.is_double_up
@@ -178,28 +178,28 @@ def get_contests_by_entries(contests, entry_fee, limit):
     )
 
 
-def set_cron_string(contest, sport_length):
+def set_cron_interval(contest, sport_length):
     # add about how long the slate should be
-    end_dt = contest.startDt + datetime.timedelta(hours=sport_length)
+    end_dt = contest.start_dt + datetime.timedelta(hours=sport_length)
 
     # if dates are the same, we don't add days or hours
-    if contest.startDt.date() == end_dt.date():
+    if contest.start_dt.date() == end_dt.date():
         print("dates are the same")
-        hours = f"{contest.startDt:%H}-{end_dt:%H}"
-        days = f"{contest.startDt:%d}"
+        hours = f"{contest.start_dt:%H}-{end_dt:%H}"
+        days = f"{contest.start_dt:%d}"
     else:
         print("dates are not the same - that means end_dt extends into the next day")
         # don't double print 00s
         if end_dt.strftime("%H") == "00":
-            hours = f"{end_dt:%H},{contest.startDt:%H}-23"
+            hours = f"{end_dt:%H},{contest.start_dt:%H}-23"
         else:
-            hours = f"00-{end_dt:%H},{contest.startDt:%H}-23"
-        days = f"{contest.startDt:%d}-{end_dt:%d}"
+            hours = f"00-{end_dt:%H},{contest.start_dt:%H}-23"
+        days = f"{contest.start_dt:%d}-{end_dt:%d}"
 
     return f"{hours} {days} {end_dt:%m} *"
 
 
-def print_cron_string(contest, sport):
+def print_cron_job(contest, sport):
     print(contest)
     home_dir = "/home/pi/Desktop"
     pipenv_path = "/home/pi/.local/bin/pipenv"
@@ -226,7 +226,7 @@ def print_cron_string(contest, sport):
     py_str = f"cd {home_dir}/dk_salary_owner && {pipenv_path} run python"
     dl_str = f"{py_str} download_DK_salary.py"
     get_str = f"export DISPLAY=:0 && {py_str} get_DFS_results.py"
-    cron_str = set_cron_string(contest, sport_length)
+    cron_str = set_cron_interval(contest, sport_length)
     out_str = f"{home_dir}/{sport}_results.log 2>&1"
 
     print(f"{dl_interval} {cron_str} {dl_str} -s {sport} -dg {contest.draft_group} >> {out_str}")
@@ -255,7 +255,7 @@ def valid_date(date_string):
 def get_stats(contests):
     stats = {}
     for c in contests:
-        start_date = c.startDt.strftime("%Y-%m-%d")
+        start_date = c.start_dt.strftime("%Y-%m-%d")
 
         # initialize stats[start_date] if it doesn't exist
         if start_date not in stats:
@@ -354,9 +354,9 @@ def main():
         args.sport = "PGA"
 
     # start_hour = start_dt.strftime('%H')
-    print("start: {}".format(contest.startDt))
+    print("start: {}".format(contest.start_dt))
 
-    print_cron_string(contest, args.sport)
+    print_cron_job(contest, args.sport)
 
 
 if __name__ == "__main__":
