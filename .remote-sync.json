@@ -8,6 +8,7 @@
     ".remote-sync.json",
     ".git/**",
     ".venv/**",
+    ".vscode/**",
     "*.sql",
     "*.out",
     "*.log",

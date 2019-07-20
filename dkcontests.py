@@ -113,7 +113,7 @@ def get_contests(url):
 
 
 def get_largest_contest(contests, dt, entry_fee=25, query=None, exclude=None):
-    """Return largest contest from a list of Contests
+    """Return largest contest from a list of Contests.
 
     Parameters
     ----------
@@ -132,6 +132,7 @@ def get_largest_contest(contests, dt, entry_fee=25, query=None, exclude=None):
     -------
     Contest
         returns largest (entries) contest or None
+
     """
     print("contests size: {}".format(len(contests)))
     contest_list = []
@@ -168,8 +169,8 @@ def match_contest_criteria(contest, dt, entry_fee=25, query=None, exclude=None):
     -------
     boolean
         returns true if all criteria matched, otherwise false
+
     """
-    #
     if (
         contest.start_dt.date() == dt.date()
         and contest.max_entry_count == 1
@@ -254,16 +255,20 @@ def print_cron_job(contest, sport):
 
 
 def valid_date(date_string):
-    """Check date argument to determine if it is a valid
+    """Check date argument to determine if it is a valid.
 
-    Arguments:
+    Arguments
+    ---------
         date_string {string} -- date from argument
 
-    Raises:
+    Raises
+    ------
         argparse.ArgumentTypeError:
 
-    Returns:
+    Returns
+    -------
         {datetime.datetime} -- YYYY-MM-DD format
+
     """
     try:
         return datetime.datetime.strptime(date_string, "%Y-%m-%d")
