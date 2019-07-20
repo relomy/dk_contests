@@ -92,6 +92,26 @@ class Contest:
         return f"{vars(self)}"
 
 
+def get_contests(url):
+    # set cookies based on Chrome session
+
+    print(url)
+
+    response = requests.get(url, headers=HEADERS, cookies=COOKIES).json()
+    response_contests = {}
+    if isinstance(response, list):
+        print("response is a list")
+        response_contests = response
+    elif "Contests" in response:
+        print("response is a dict")
+        response_contests = response["Contests"]
+    else:
+        print("response isn't a dict or a list??? exiting")
+        exit()
+
+    return response_contests
+
+
 def get_largest_contest(contests, dt, entry_fee=25, query=None, exclude=None):
     """Return largest contest from a list of Contests
 
@@ -302,7 +322,7 @@ def main():
         required=True,
         help="Type of contest (NBA, NFL, GOLF, CFB, NHL, MLB, or TEN)",
     )
-    parser.add_argument("-l", "--live", action="store_true", help="Get live contests")
+    parser.add_argument("-l", "--live", action="store_true", default="", help="Get live contests")
     parser.add_argument("-e", "--entry", type=int, default=25, help="Entry fee (25 for $25)")
     parser.add_argument("-q", "--query", help="Search contest name")
     parser.add_argument("-x", "--exclude", help="Exclude from search")
@@ -314,32 +334,20 @@ def main():
         type=valid_date,
     )
     args = parser.parse_args()
+    print(args)
 
     live = ""
-    print(args)
     if args.live:
         live = "live"
 
-    # set cookies based on Chrome session
-
-    url = "https://www.draftkings.com/lobby/get{0}contests?sport={1}".format(live, args.sport)
-    print(url)
-
-    response = requests.get(url, headers=HEADERS, cookies=COOKIES).json()
-    response_contests = {}
-    if isinstance(response, list):
-        print("response is a list")
-        response_contests = response
-    elif "Contests" in response:
-        print("response is a dict")
-        response_contests = response["Contests"]
-    else:
-        print("response isn't a dict or a list??? exiting")
-        exit()
+    # get contests from url
+    url = f"https://www.draftkings.com/lobby/get{live}contests?sport={args.sport}"
+    response_contests = get_contests(url)
 
     # create list of Contest objects
     contests = [Contest(c) for c in response_contests]
 
+    # print stats for contests
     print_stats(contests)
 
     # parse contest and return single contest which matches argument criteria
@@ -353,9 +361,7 @@ def main():
     if args.sport == "GOLF":
         args.sport = "PGA"
 
-    # start_hour = start_dt.strftime('%H')
-    print("start: {}".format(contest.start_dt))
-
+    # print out cron job for our other scripts
     print_cron_job(contest, args.sport)
 
 
