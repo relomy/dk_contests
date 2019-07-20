@@ -15,7 +15,6 @@ rope = "*"
 
 [packages]
 requests = "*"
-pytz = "*"
 browsercookie = {hg = "https://bitbucket.org/richardpenman/browsercookie/"}
 pywin32 = {version = "*", sys_platform = "== 'win32'"}
 
