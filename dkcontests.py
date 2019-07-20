@@ -38,12 +38,9 @@ Response format: {
 import argparse
 import datetime
 import re
-from collections import defaultdict
 
 import browsercookie
 import requests
-from pytz import timezone
-
 
 COOKIES = browsercookie.chrome()
 HEADERS = {
@@ -66,22 +63,26 @@ HEADERS = {
 
 class Contest:
     def __init__(self, contest):
-        self.startDate = contest["sd"]
+        self.start_date = contest["sd"]
         self.name = contest["n"]
         self.id = contest["id"]
-        self.draftGroup = contest["dg"]
-        self.totalPrizes = contest["po"]
+        self.draft_group = contest["dg"]
+        self.total_prizes = contest["po"]
         self.entries = contest["m"]
-        self.entryFee = contest["a"]
-        self.entryCount = contest["ec"]
-        self.maxEntryCount = contest["mec"]
+        self.entry_fee = contest["a"]
+        self.entry_count = contest["ec"]
+        self.max_entry_count = contest["mec"]
         self.attr = contest["attr"]
-        self.isDoubleUp = False
+        self.is_guaranteed = False
+        self.is_double_up = False
 
-        self.startDt = self.get_dt_from_timestamp(self.startDate)
+        self.startDt = self.get_dt_from_timestamp(self.start_date)
 
         if "IsDoubleUp" in self.attr:
-            self.isDoubleUp = self.attr["IsDoubleUp"]
+            self.is_double_up = self.attr["IsDoubleUp"]
+
+        if "IsGuaranteed" in self.attr:
+            self.is_guaranteed = self.attr["IsGuaranteed"]
 
     def get_dt_from_timestamp(self, timestamp_str):
         timestamp = float(re.findall(r"[^\d]*(\d+)[^\d]*", timestamp_str)[0])
@@ -92,12 +93,31 @@ class Contest:
 
 
 def get_largest_contest(contests, dt, entry_fee=25, query=None, exclude=None):
+    """Return largest contest from a list of Contests
+    
+    Parameters
+    ----------
+    contests : list of Contests
+        list of DraftKings contests
+    dt : datetime.datetime
+        the datetime to filter
+    entry_fee : int, optional
+        contest entry fee, by default 25
+    query : string, optional
+        include string in contest name, by default None
+    exclude : string, optional
+        exclude string in contest name, by default None
+    
+    Returns
+    -------
+    Contest
+        returns largest (entries) contest or None
+    """
     print("contests size: {}".format(len(contests)))
     contest_list = []
 
-    for c in contests:
-        if match_contest_criteria(c, dt, entry_fee, query, exclude):
-            contest_list.append(c)
+    # add contest to list if it matches criteria
+    contest_list = [c for c in contests if match_contest_criteria(c, dt, entry_fee, query, exclude)]
 
     print("number of contests meeting requirements: {}".format(len(contest_list)))
 
@@ -109,11 +129,33 @@ def get_largest_contest(contests, dt, entry_fee=25, query=None, exclude=None):
 
 
 def match_contest_criteria(contest, dt, entry_fee=25, query=None, exclude=None):
+    """Use arguments to filter contest criteria.
+    
+    Parameters
+    ----------
+    contest : Contest
+        DraftKings contest
+    dt : [datetime.datetime]
+        the datetime on which we wish to filter
+    entry_fee : int, optional
+        the entry fee for the contest (default: {25}), by default 25
+    query : string, optional
+        include string in contest name, by default None
+    exclude : string, optional
+        exclude string in contest name, by default None
+    
+    Returns
+    -------
+    boolean
+        returns true if all criteria matched, otherwise false
+    """
+    #
     if (
         contest.startDt.date() == dt.date()
-        and contest.maxEntryCount == 1
-        and contest.entryFee == entry_fee
-        and contest.isDoubleUp
+        and contest.max_entry_count == 1
+        and contest.entry_fee == entry_fee
+        and contest.is_double_up
+        and contest.is_guaranteed
     ):
         # if exclude is in the name, return false
         if exclude and exclude in contest.name:
@@ -130,20 +172,37 @@ def match_contest_criteria(contest, dt, entry_fee=25, query=None, exclude=None):
 
 def get_contests_by_entries(contests, entry_fee, limit):
     return sorted(
-        [c for c in contests if c.entryFee == entry_fee and c.entries > limit],
+        [c for c in contests if c.entry_fee == entry_fee and c.entries > limit],
         key=lambda x: x.entries,
         reverse=True,
     )
 
 
+def set_cron_string(contest, sport_length):
+    # add about how long the slate should be
+    end_dt = contest.startDt + datetime.timedelta(hours=sport_length)
+
+    # if dates are the same, we don't add days or hours
+    if contest.startDt.date() == end_dt.date():
+        print("dates are the same")
+        hours = f"{contest.startDt:%H}-{end_dt:%H}"
+        days = f"{contest.startDt:%d}"
+    else:
+        print("dates are not the same - that means end_dt extends into the next day")
+        # don't double print 00s
+        if end_dt.strftime("%H") == "00":
+            hours = f"{end_dt:%H},{contest.startDt:%H}-23"
+        else:
+            hours = f"00-{end_dt:%H},{contest.startDt:%H}-23"
+        days = f"{contest.startDt:%d}-{end_dt:%d}"
+
+    return f"{hours} {days} {end_dt:%m} *"
+
+
 def print_cron_string(contest, sport):
     print(contest)
-    home_dir = "/home/pi/Desktop/dk_salary_owner/"
+    home_dir = "/home/pi/Desktop"
     pipenv_path = "/home/pi/.local/bin/pipenv"
-
-    py_str = f"/bin/cd {home_dir} && {pipenv_path} run python"
-    dl_str = f"{py_str} download_DK_salary.py"
-    get_str = f"{py_str} get_DFS_results.py"
 
     # set interval and length depending on sport
     if sport == "NBA":
@@ -163,36 +222,15 @@ def print_cron_string(contest, sport):
         dl_interval = "4-59/15"
         get_interval = "5-59/10"
 
-    # add about how long the slate should be
-    end_dt = contest.startDt + datetime.timedelta(hours=sport_length)
-    print("end: {}".format(end_dt))
+    # set some long strings up as variables
+    py_str = f"cd {home_dir}/dk_salary_owner && {pipenv_path} run python"
+    dl_str = f"{py_str} download_DK_salary.py"
+    get_str = f"export DISPLAY=:0 && {py_str} get_DFS_results.py"
+    cron_str = set_cron_string(contest, sport_length)
+    out_str = f"{home_dir}/{sport}_results.log 2>&1"
 
-    # if dates are the same, we don't add days or hours
-    if contest.startDt.date() == end_dt.date():
-        print("dates are the same")
-        hours = f"{contest.startDt:%H}-{end_dt:%H}"
-        days = f"{contest.startDt:%d}"
-    else:
-        print("dates are not the same - that means end_dt extends into the next day")
-        # don't double print 00s
-        if end_dt.strftime("%H") == "00":
-            hours = f"{end_dt:%H},{contest.startDt:%H}-23"
-        else:
-            hours = f"00-{end_dt:%H},{contest.startDt:%H}-23"
-        days = f"{contest.startDt:%d}-{end_dt:%d}"
-
-    cron_str = f"{hours} {days} {end_dt:%m} *"
-
-    print(
-        "{0} {1} {2} -s {3} -dg {4} >> /home/pi/Desktop/{3}_results.log 2>&1".format(
-            dl_interval, cron_str, dl_str, sport, contest.draftGroup
-        )
-    )
-    print(
-        "{0} {1} export DISPLAY=:0 && {2} -s {3} -i {4} >> /home/pi/Desktop/{3}_results.log 2>&1".format(
-            get_interval, cron_str, get_str, sport, contest.id
-        )
-    )
+    print(f"{dl_interval} {cron_str} {dl_str} -s {sport} -dg {contest.draft_group} >> {out_str}")
+    print(f"{get_interval} {cron_str} {get_str} -s {sport} -i {contest.id} >> {out_str}")
 
 
 def valid_date(date_string):
@@ -226,16 +264,16 @@ def get_stats(contests):
         stats[start_date]["count"] += 1
 
         # keep track of single-entry double-ups
-        if c.maxEntryCount == 1 and c.isDoubleUp:
+        if c.max_entry_count == 1 and c.is_guaranteed and c.is_double_up:
             # initialize stats[start_date]["dubs"] if it doesn't exist
             if "dubs" not in stats[start_date]:
-                stats[start_date]["dubs"] = {c.entryFee: 0}
+                stats[start_date]["dubs"] = {c.entry_fee: 0}
 
-            # initialize stats[start_date]["dubs"][c.entryFee] if it doesn't exist
-            if c.entryFee not in stats[start_date]["dubs"]:
-                stats[start_date]["dubs"][c.entryFee] = 0
+            # initialize stats[start_date]["dubs"][c.entry_fee] if it doesn't exist
+            if c.entry_fee not in stats[start_date]["dubs"]:
+                stats[start_date]["dubs"][c.entry_fee] = 0
 
-            stats[start_date]["dubs"][c.entryFee] += 1
+            stats[start_date]["dubs"][c.entry_fee] += 1
 
     return stats
 
